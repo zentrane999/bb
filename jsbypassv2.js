@@ -2,8 +2,8 @@
 
 
                Developer & create script by:
-                       t.me/mb66dick
-                       t.me/bixd08
+                       t.me/zentra999
+                       t.me/zentra999
                New version: 18/01/26
 
 
@@ -110,8 +110,8 @@ const enableRedirectBypass = redirectBypassIndex !== -1;
 if (!reqmethod || !target || !time || !threads || !ratelimit || !proxyfile) {
     console.clear();
     console.log(`
-      Contact: t.me/bixd08             - JsBypass Script Update: 20/01/26
-                     t.me/mb66dick
+      Contact: t.me/zentra999             - JsBypass Script Update: 20/01/26
+                     t.me/zentra999
 
      Usage:
         node ${process.argv[1]} <GET/POST> <target> <time> <threads> <ratelimit> <proxy> [ Options ]
