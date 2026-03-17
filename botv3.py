@@ -6,8 +6,8 @@ from telegram.ext import ApplicationBuilder, CommandHandler
 from pytz import timezone
 from html import escape
 
-TOKEN = '7630561576:AAGjIamYPcnV2XpPwLCRSI1GMJ1W96MILtc'
-ADMIN_IDS = [6365140337]
+TOKEN = '8185251236:AAHZ42qwZVXolyjmw5z-kR-x8XIzQmiDq1E'
+ADMIN_IDS = [7731091077]
 VIP_USERS_FILE, METHODS_FILE, GROUPS_FILE, BLACKLIST_FILE = 'vip_users.json', 'methods.json', 'groups.json', 'blacklist.json'
 
 # user_processes: map user_id -> list of asyncio subprocesses (to allow multiple concurrent procs per user)
