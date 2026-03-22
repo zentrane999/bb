@@ -1,5 +1,5 @@
-// Code By @nguyenxuantrinhdz `Calce`
-//recode by @ThaiDuongScript
+// Code By @zentra999 `zentar`
+//recode by @ahba999
 // npm install colors
 const net = require("net");
 const http2 = require("http2");
