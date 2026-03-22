@@ -136,7 +136,7 @@ async def help_group(update, context):
         " └ 📋 <code>/methods</code> <i>(List kỹ thuật)</i>\n"
         "━━━━━━━━━━━━━━━━━━━━━━\n💡 <i>Tip: Chỉ hoạt động trong nhóm đã cấp phép.</i>"
     )
-    kb = InlineKeyboardMarkup([[InlineKeyboardButton("👨‍💻 Liên Hệ Admin", url="https://t.me/zentra999")]])
+    kb = InlineKeyboardMarkup([[InlineKeyboardButton("👨‍💻 Liên Hệ Admin", url="https://t.me/ahba999")]])
     await update.message.reply_text(help_text, parse_mode='HTML', reply_markup=kb)
 
 # --- PANEL: LÊN LỊCH & HỦY LỊCH (DÀNH CHO VIP) ---
