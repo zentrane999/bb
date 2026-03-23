@@ -16,7 +16,7 @@ from pytz import timezone
 from html import escape
 
 # --- CẤU HÌNH HỆ THỐNG ---
-TOKEN = '8185251236:AAHZ42qwZVXolyjmw5z-kR-x8XIzQmiDq1E' 
+TOKEN = '8772018236:AAHdo-_qetfsviFAsajdhaMIj8qBWcLMVrQ' 
 ADMIN_IDS = [7731091077]
 DB_FILE = 'bot_database.db'
 
