@@ -1,4 +1,4 @@
-// Code By @zentra999 `zentar`
+// Code By @zentra999 `zentra`
 //recode by @ahba999
 // npm install colors
 const net = require("net");
