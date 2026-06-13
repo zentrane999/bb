@@ -24,7 +24,7 @@ from pytz import timezone
 
 # --- CẤU HÌNH HỆ THỐNG GỐC ---
 ORIGINAL_ADMINS = [6365140337] 
-TOKEN = os.getenv('BOT_TOKEN', '8869625424:AAG9x0En8xCS7jB1PQsAntwlY86AoEqMcKE') 
+TOKEN = os.getenv('BOT_TOKEN', '8869625424:AAEBoj22fN9KSNxk3UP4e39925YpNeoKQs0') 
 DB_FILE = 'bot_database.db'
 GROUP_LINK = "https://t.me/srv_down" 
 BOT_USERNAME = "CyberStressersVN_Bot"  
