@@ -403,7 +403,7 @@ async def help_group(update, context):
                 
                 ref_res = db_query('SELECT ref_count FROM joined_users WHERE user_id = ?', (referrer_id,), fetch=True)
                 current_refs = ref_res[0][0] if ref_res else 0
-                ref_needed = int(get_system_setting("ref_needed_for_vip", "5"))
+                ref_needed = int(get_system_setting("ref_needed_for_vip", "100"))
                 
                 if current_refs >= ref_needed and not check_vip_status(referrer_id):
                     db_query('REPLACE INTO vip_users (user_id, package_name) VALUES (?, "VIP1")', (referrer_id,))
